@@ -44,6 +44,7 @@ if __name__ == '__main__':
 
   print("Witing patches...")
 
+  pdev = usbexec.PwnedUSBDevice()
   pdev.write_memory(0x100006ca8, b"\x1f\x20\x03\xd5")
   pdev.write_memory(0x100006c80, b"".join([
             b"\x21\x00\x80\x52", # mov w1, 1
