@@ -1,0 +1,119 @@
+#!/usr/bin/python3
+
+import binascii, datetime, getopt, hashlib, struct, sys, time
+import dfu
+import checkm8, usbexec
+
+HOST2DEVICE = 0x21
+DEVICE2HOST = 0xA1
+
+DFU_DNLOAD = 1
+DFU_ABORT = 4
+
+read = True
+
+if __name__ == '__main__':
+  device = dfu.acquire_device()
+  serial_number = device.serial_number
+  dfu.release_device(device)
+
+  if 'CPID:8947' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8950' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8955' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8960' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8002' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8004' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8010' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8011' in serial_number:
+    checkm8.exploit()
+  elif 'CPID:8015' in serial_number:
+    checkm8.exploit()
+  else:
+    print('Found:', serial_number)
+    print('ERROR: This device is not supported.')
+    sys.exit(1)
+
+  time.sleep(2)
+
+  '''while read:
+    raw_address = input("address: ")
+    if raw_address == "exit":
+      read = False
+    else:
+      raw_length  = "725"
+      address = int(raw_address, 16) if raw_address.startswith('0x') else int(raw_address, 10)
+      length = int(raw_length, 16) if raw_length.startswith('0x') else int(raw_length, 10)
+      device = usbexec.PwnedUSBDevice()
+      dump = device.read_memory(address, length)
+      for i in range(5):
+        print(dump.hex()[50*i:50*(i+1)])'''
+
+  print("Witing patches...")
+
+  HEAP_BASE         = 0x1801E8000
+  HEAP_WRITE_OFFSET = 0x5000
+  HEAP_WRITE_HASH   = 0x10000125C #fixed
+  HEAP_CHECK_ALL    = 0x10000DB98
+  HEAP_STATE        = 0x1800086A0
+  NAND_BOOT_JUMP    = 0x100000628 #fixed
+  BOOTSTRAP_TASK_LR = 0x180015F88
+  DFU_BOOL          = 0x1800085B0
+  DFU_NOTIFY        = 0x1000098B4
+  DFU_STATE         = 0x1800085E0
+  TRAMPOLINE        = 0x180018000
+  block1 = struct.pack('<8Q', 0, 0, 0, HEAP_STATE, 2, 132, 128, 0)
+  block2 = struct.pack('<8Q', 0, 0, 0, HEAP_STATE, 2,   8, 128, 0)
+
+  pdev = usbexec.PwnedUSBDevice()
+
+  pdev.write_memory(HEAP_BASE + HEAP_WRITE_OFFSET        , block1)
+  pdev.write_memory(HEAP_BASE + HEAP_WRITE_OFFSET +  0x80, block2)
+  pdev.write_memory(HEAP_BASE + HEAP_WRITE_OFFSET + 0x100, block2)
+  pdev.write_memory(HEAP_BASE + HEAP_WRITE_OFFSET + 0x180, block2)
+
+  #device.execute(0, HEAP_WRITE_HASH, HEAP_BASE + HEAP_WRITE_OFFSET        )
+  #device.execute(0, HEAP_WRITE_HASH, HEAP_BASE + HEAP_WRITE_OFFSET +  0x80)
+  #device.execute(0, HEAP_WRITE_HASH, HEAP_BASE + HEAP_WRITE_OFFSET + 0x100)
+  #device.execute(0, HEAP_WRITE_HASH, HEAP_BASE + HEAP_WRITE_OFFSET + 0x180)
+  #device.execute(0, HEAP_CHECK_ALL)
+
+  print('Heap repaired.')
+
+  #pdev.write_memory(0x180018000, checkm8.asm_arm64_branch(0x180018000, 0x180018000+0x400))
+  #pdev.write_memory(0x180018000+0x400, open("bin/t8015_shellcode_arm64.bin", "rb").read())
+
+  pdev.write_memory(0x100007044, b"\x00\x00\x80\xd2")
+  pdev.write_memory(0x100007048, b"\x03\xc0\x5f\xd6")
+
+  pdev.write_memory(0x100006ca8, b"\x1f\x20\x03\xd5")
+  pdev.write_memory(0x100006c80, b"".join([
+            b"\x21\x00\x80\x52", # mov w1, 1
+            b"\xe1\xe7\x03\x39", # strb w1, [sp,#0xA7]
+            b"\x1f\x20\x03\xd5", # nop
+            b"\xe1\xef\x03\x39", # strb w1, [sp,#0xA9]
+            b"\xe1\xf7\x03\x39", # strb w1, [sp,#0xAA]
+            b"\x1f\x20\x03\xd5", # nop
+            b"\x1f\x20\x03\xd5", # nop
+            b"\x1f\x20\x03\xd5", # nop
+            b"\x1f\x20\x03\xd5", # nop
+          ]))
+
+  print("Patches done")
+
+  device = dfu.acquire_device()
+  dfu.usb_reset(device)
+  dfu.release_device(device)
+
+  input("Done")
+
+  device = dfu.acquire_device()
+  device.ctrl_transfer(HOST2DEVICE, DFU_ABORT, 0, 0, 0, 0)
+  dfu.usb_reset(device)
+  dfu.release_device(device)
